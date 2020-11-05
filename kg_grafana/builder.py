@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import Optional, Sequence
 
 from kubragen import KubraGen
 from kubragen.builder import Builder
@@ -81,25 +81,25 @@ class GrafanaBuilder(Builder):
     def namespace(self):
         return self._namespace
 
-    def build_names(self) -> List[TBuild]:
+    def build_names(self) -> Sequence[TBuild]:
         return [self.BUILD_SERVICE]
 
-    def build_names_required(self) -> List[TBuild]:
+    def build_names_required(self) -> Sequence[TBuild]:
         return [self.BUILD_SERVICE]
 
-    def builditem_names(self) -> List[TBuildItem]:
+    def builditem_names(self) -> Sequence[TBuildItem]:
         return [
             self.BUILDITEM_DEPLOYMENT,
             self.BUILDITEM_SERVICE,
         ]
 
-    def internal_build(self, buildname: TBuild) -> List[ObjectItem]:
+    def internal_build(self, buildname: TBuild) -> Sequence[ObjectItem]:
         if buildname == self.BUILD_SERVICE:
             return self.internal_build_service()
         else:
             raise InvalidNameError('Invalid build name: "{}"'.format(buildname))
 
-    def internal_build_service(self) -> List[ObjectItem]:
+    def internal_build_service(self) -> Sequence[ObjectItem]:
         ret = [Object({
             'apiVersion': 'apps/v1',
             'kind': 'Deployment',

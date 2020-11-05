@@ -27,7 +27,7 @@ class GrafanaOptions(Options):
         * - config |rarr| install_plugins
           - install plugins
           - Sequence
-          - ``````
+          - ```[]```
         * - config |rarr| service_port
           - service port
           - int
@@ -39,10 +39,10 @@ class GrafanaOptions(Options):
         * - kubernetes |rarr| volumes |rarr| data
           - Kubernetes data volume
           - Mapping, :class:`KData_Value`, :class:`KData_ConfigMap`, :class:`KData_Secret`
-          - ```{'emptyDir': {}```
+          - ```{'emptyDir': {}}```
         * - kubernetes |rarr| resources |rarr| deployment
           - Kubernetes Deployment resources
-          - dict
+          - Mapping
           -
     """
     def define_options(self):
