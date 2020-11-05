@@ -145,7 +145,7 @@ class GrafanaBuilder(Builder):
                         'volumes': [
                             KDataHelper_Volume.info(base_value={
                                 'name': 'data',
-                            }, kdata=self.option_get('kubernetes.volumes.data')),
+                            }, value=self.option_get('kubernetes.volumes.data')),
                         ]
                     }
                 }
