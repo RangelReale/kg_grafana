@@ -11,7 +11,7 @@ if "%1" NEQ "patch" (
 bump2version --verbose %1
 if errorlevel 1 goto error
 
-git push --follow-tags origin master
+git push --follow-tags origin
 if errorlevel 1 goto error
 
 rmdir /s/q dist
