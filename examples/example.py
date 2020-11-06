@@ -1,5 +1,6 @@
 from kubragen import KubraGen
 from kubragen.consts import PROVIDER_GOOGLE, PROVIDERSVC_GOOGLE_GKE
+from kubragen.data import ValueData
 from kubragen.object import Object
 from kubragen.option import OptionRoot
 from kubragen.options import Options
@@ -51,7 +52,7 @@ grafana_config = GrafanaBuilder(kubragen=kg, options=GrafanaOptions({
     'config': {
         'service_port': 80,
         'provisioning': {
-            'datasources': [{
+            'datasources': ValueData(value=[{
                 'name': 'Prometheus',
                 'type': 'prometheus',
                 'access': 'proxy',
@@ -61,7 +62,7 @@ grafana_config = GrafanaBuilder(kubragen=kg, options=GrafanaOptions({
                 'type': 'loki',
                 'access': 'proxy',
                 'url': 'http://loki:3100',
-            }],
+            }], enabled=True),
         },
     },
     'kubernetes': {

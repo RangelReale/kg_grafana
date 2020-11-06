@@ -4,7 +4,7 @@ from kubragen import KubraGen
 from kubragen.builder import Builder
 from kubragen.configfile import ConfigFile, ConfigFileRenderMulti, ConfigFileRender_Yaml, ConfigFileRender_RawStr, \
     ConfigFileOutput_Dict
-from kubragen.data import ValueData
+from kubragen.data import ValueData, DataIsNone, DataGetValue
 from kubragen.exception import InvalidNameError, InvalidParamError
 from kubragen.kdatahelper import KDataHelper_Volume
 from kubragen.object import ObjectItem, Object
@@ -93,10 +93,13 @@ class GrafanaBuilder(Builder):
     def option_get(self, name: str):
         return self.kubragen.option_root_get(self.options, name)
 
+    def option_data_get(self, name: str):
+        return DataGetValue(self.kubragen.option_root_get(self.options, name))
+
     def is_config_provisioning(self) -> bool:
-        return self.option_get('config.provisioning.datasources') is not None or \
-               self.option_get('config.provisioning.plugins') is not None or \
-               self.option_get('config.provisioning.dashboards') is not None
+        return not DataIsNone(self.option_get('config.provisioning.datasources')) or \
+               not DataIsNone(self.option_get('config.provisioning.plugins')) or \
+               not DataIsNone(self.option_get('config.provisioning.dashboards'))
 
     def basename(self, suffix: str = ''):
         return '{}{}'.format(self.option_get('basename'), suffix)
@@ -129,8 +132,8 @@ class GrafanaBuilder(Builder):
             raise InvalidNameError('Invalid build name: "{}"'.format(buildname))
 
     def configfile_get(self, filetype: str, optionname: str) -> str:
-        ofile = self.option_get(optionname)
-        if ofile is None:
+        ofile = self.option_data_get(optionname)
+        if DataIsNone(ofile):
             raise InvalidParamError('Config file option "{}" is empty'.format(optionname))
 
         configfilerender = ConfigFileRenderMulti([
@@ -154,13 +157,14 @@ class GrafanaBuilder(Builder):
         if self.is_config_provisioning():
             secret_data = {}
 
-            if self.option_get('config.provisioning.datasources') is not None:
+            if not DataIsNone(self.option_get('config.provisioning.datasources')):
                 secret_data['datasources.yaml'] = self.kubragen.secret_data_encode(
                     self.configfile_get('datasources', 'config.provisioning.datasources'))
-            if self.option_get('config.provisioning.plugins') is not None:
+                secret_data['datasources2.yaml'] = self.configfile_get('datasources', 'config.provisioning.datasources')
+            if not DataIsNone(self.option_get('config.provisioning.plugins')):
                 secret_data['plugins.yaml'] = self.kubragen.secret_data_encode(
                     self.configfile_get('apps', 'config.provisioning.plugins'))
-            if self.option_get('config.provisioning.dashboards') is not None:
+            if not DataIsNone(self.option_get('config.provisioning.dashboards')):
                 secret_data['dashboards.yaml'] = self.kubragen.secret_data_encode(
                     self.configfile_get('providers', 'config.provisioning.dashboards'))
 
@@ -222,17 +226,17 @@ class GrafanaBuilder(Builder):
                                     'name': 'provisioning-datasources',
                                     'mountPath': '/etc/grafana/provisioning/datasources',
                                     'readOnly': True,
-                                }, enabled=self.option_get('config.provisioning.datasources') is not None),
+                                }, enabled=not DataIsNone(self.option_get('config.provisioning.datasources'))),
                                 ValueData(value={
                                     'name': 'provisioning-plugins',
                                     'mountPath': '/etc/grafana/provisioning/plugins',
                                     'readOnly': True,
-                                }, enabled=self.option_get('config.provisioning.plugins') is not None),
+                                }, enabled=not DataIsNone(self.option_get('config.provisioning.plugins'))),
                                 ValueData(value={
                                     'name': 'provisioning-dashboards',
                                     'mountPath': '/etc/grafana/provisioning/dashboards',
                                     'readOnly': True,
-                                }, enabled=self.option_get('config.provisioning.dashboards') is not None),
+                                }, enabled=not DataIsNone(self.option_get('config.provisioning.dashboards'))),
                             ],
                             'resources': ValueData(value=self.option_get('kubernetes.resources.deployment'), disabled_if_none=True),
                         }],
@@ -250,7 +254,7 @@ class GrafanaBuilder(Builder):
                                         'path': 'datasources.yaml',
                                     }]
                                 }
-                            }, enabled=self.option_get('config.provisioning.datasources') is not None),
+                            }, enabled=not DataIsNone(self.option_get('config.provisioning.datasources'))),
                             ValueData(value={
                                 'name': 'provisioning-plugins',
                                 'secret': {
@@ -260,7 +264,7 @@ class GrafanaBuilder(Builder):
                                         'path': 'plugins.yaml',
                                     }]
                                 }
-                            }, enabled=self.option_get('config.provisioning.plugins') is not None),
+                            }, enabled=not DataIsNone(self.option_get('config.provisioning.plugins'))),
                             ValueData(value={
                                 'name': 'provisioning-dashboards',
                                 'secret': {
@@ -270,7 +274,7 @@ class GrafanaBuilder(Builder):
                                         'path': 'dashboards.yaml',
                                     }]
                                 }
-                            }, enabled=self.option_get('config.provisioning.dashboards') is not None),
+                            }, enabled=not DataIsNone(self.option_get('config.provisioning.dashboards'))),
                         ]
                     }
                 }
