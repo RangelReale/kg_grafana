@@ -1,5 +1,6 @@
 from typing import Sequence, Mapping
 
+from kubragen.configfile import ConfigFile
 from kubragen.kdatahelper import KDataHelper_Volume
 from kubragen.option import OptionDef, OptionDefFormat
 from kubragen.options import Options
@@ -32,6 +33,18 @@ class GrafanaOptions(Options):
           - service port
           - int
           - 3000
+        * - config |rarr| provisioning |rarr| datasources
+          - Grafana datasource provisioning
+          - str, Sequence, ConfigFile
+          -
+        * - config |rarr| provisioning |rarr| plugins
+          - Grafana plugins provisioning
+          - str, Sequence, ConfigFile
+          -
+        * - config |rarr| provisioning |rarr| dashboards
+          - Grafana dashboards provisioning
+          - str, Sequence, ConfigFile
+          -
         * - container |rarr| grafana
           - grafana container image
           - str
@@ -57,6 +70,11 @@ class GrafanaOptions(Options):
             'config': {
                 'install_plugins': OptionDef(default_value=[], allowed_types=[Sequence]),
                 'service_port': OptionDef(required=True, default_value=3000, allowed_types=[int]),
+                'provisioning': {
+                    'datasources': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
+                    'plugins': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
+                    'dashboards': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
+                },
             },
             'container': {
                 'grafana': OptionDef(required=True, default_value='grafana/grafana:7.2.0', allowed_types=[str]),
