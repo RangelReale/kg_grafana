@@ -52,17 +52,20 @@ grafana_config = GrafanaBuilder(kubragen=kg, options=GrafanaOptions({
     'config': {
         'service_port': 80,
         'provisioning': {
-            'datasources': ValueData(value=[{
-                'name': 'Prometheus',
-                'type': 'prometheus',
-                'access': 'proxy',
-                'url': 'http://prometheus:9090',
-            }, {
-                'name': 'Loki',
-                'type': 'loki',
-                'access': 'proxy',
-                'url': 'http://loki:3100',
-            }], enabled=True),
+            'datasources': [
+                {
+                    'name': 'Prometheus',
+                    'type': 'prometheus',
+                    'access': 'proxy',
+                    'url': 'http://prometheus:9090',
+                },
+                {
+                    'name': 'Loki',
+                    'type': 'loki',
+                    'access': 'proxy',
+                    'url': 'http://loki:3100',
+                },
+            ],
         },
     },
     'kubernetes': {
