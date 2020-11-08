@@ -78,7 +78,7 @@ class GrafanaBuilder(Builder):
 
         self._namespace = self.option_get('namespace')
 
-        self.object_names_update({
+        self.object_names_init({
             'config-secret': None,
             'service': self.basename(),
             'deployment': self.basename(),
@@ -86,7 +86,7 @@ class GrafanaBuilder(Builder):
         })
 
         if self.is_config_provisioning():
-            self.object_names_update({
+            self.object_names_init({
                 'config-secret': self.basename('-config-secret'),
             })
 
