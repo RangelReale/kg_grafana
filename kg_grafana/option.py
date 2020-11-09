@@ -1,6 +1,7 @@
-from typing import Sequence, Mapping
+from typing import Sequence, Mapping, Any
 
 from kubragen.configfile import ConfigFile
+from kubragen.data import Data
 from kubragen.kdatahelper import KDataHelper_Volume
 from kubragen.option import OptionDef, OptionDefFormat
 from kubragen.options import Options
@@ -88,5 +89,27 @@ class GrafanaOptions(Options):
                 'resources': {
                     'deployment': OptionDef(allowed_types=[Mapping]),
                 }
+            },
+        }
+
+
+class GrafanaOptions_Default_Resources_Deployment(Data):
+    """
+    Default option value for:
+
+    ```kubernetes.resources.deployment```
+    """
+    def is_enabled(self) -> bool:
+        return True
+
+    def get_value(self) -> Any:
+        return {
+            'requests': {
+                'cpu': '100m',
+                'memory': '128Mi'
+            },
+            'limits': {
+                'cpu': '100m',
+                'memory': '128Mi'
             },
         }
