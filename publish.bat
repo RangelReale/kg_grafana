@@ -8,6 +8,9 @@ if "%1" NEQ "patch" (
     )
 )
 
+python -m unittest
+if errorlevel 1 goto error
+
 bump2version --verbose %1
 if errorlevel 1 goto error
 
