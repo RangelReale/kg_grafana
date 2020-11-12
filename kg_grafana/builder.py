@@ -9,7 +9,7 @@ from kubragen.builder import Builder
 from kubragen.configfile import ConfigFile, ConfigFileRenderMulti, ConfigFileRender_Yaml, ConfigFileRender_RawStr, \
     ConfigFileRender_Ini, ConfigFileOutput_Dict
 from kubragen.data import ValueData
-from kubragen.exception import InvalidNameError, InvalidParamError
+from kubragen.exception import InvalidNameError, InvalidParamError, InvalidOperationError
 from kubragen.helper import LiteralStr
 from kubragen.kdata import IsKData, KData_Secret, KData_ConfigMap, KData_ConfigMapManual, KData_SecretManual, \
     KData_Value
@@ -22,6 +22,7 @@ from kubragen.util import is_allowed_types
 from .configfile import GrafanaConfigFile
 from .option import GrafanaOptions, GrafanaDashboardSource_KData, GrafanaDashboardSource, GrafanaDashboardSource_Str, \
     GrafanaDashboardSource_Url, GrafanaDashboardSource_LocalFile, GrafanaDashboardSource_GNet
+from .util import get_size
 
 
 class GrafanaBuilder(Builder):
@@ -89,7 +90,6 @@ class GrafanaBuilder(Builder):
     BUILD_SERVICE = TBuild('service')
 
     BUILDITEM_CONFIG = TBuildItem('config')
-    BUILDITEM_CONFIG_DASHBOARD = TBuildItem('config-dashboard')
     BUILDITEM_CONFIG_SECRET = TBuildItem('config-secret')
     BUILDITEM_DEPLOYMENT = TBuildItem('deployment')
     BUILDITEM_SERVICE = TBuildItem('service')
@@ -136,7 +136,6 @@ class GrafanaBuilder(Builder):
     def builditem_names(self) -> Sequence[TBuildItem]:
         return [
             self.BUILDITEM_CONFIG,
-            self.BUILDITEM_CONFIG_DASHBOARD,
             self.BUILDITEM_CONFIG_SECRET,
             self.BUILDITEM_DEPLOYMENT,
             self.BUILDITEM_SERVICE,
@@ -168,23 +167,34 @@ class GrafanaBuilder(Builder):
         )
 
         if self.option_get('config.dashboards') is not None:
-            configd_data = {}
+            # Create one ConfigMap per provider to avoid ConfigMap size limit
+            configd_data: Dict[Any, Any] = {}
 
             for dashboard in self.option_get('config.dashboards'):
                 if not isinstance(dashboard, GrafanaDashboardSource_KData):
-                    configd_data['dashboard-{}-{}.json'.format(dashboard.provider, dashboard.name)] = LiteralStr(self._dashboard_fetch(dashboard))
+                    if dashboard.provider not in configd_data:
+                        configd_data[dashboard.provider] = {}
+                    configd_data[dashboard.provider]['dashboard-{}.json'.format(dashboard.name)] = LiteralStr(self._dashboard_fetch(dashboard))
 
-            ret.append(
-                Object({
-                    'apiVersion': 'v1',
-                    'kind': 'ConfigMap',
-                    'metadata': {
-                        'name': self.object_name('config-dashboard'),
-                        'namespace': self.namespace(),
-                    },
-                    'data': configd_data,
-                }, name=self.BUILDITEM_CONFIG_DASHBOARD, source=self.SOURCE_NAME, instance=self.basename()),
-            )
+            max_config_size = self.option_get('config.dashboard_config_max_size')
+            for cprovider, cproviderdata in configd_data.items():
+                if max_config_size is not None:
+                    current_config_size = get_size(cproviderdata)
+                    if current_config_size > max_config_size:
+                        raise InvalidOperationError('Maximum ConfigMap size reached for dashboard provider "{}". '
+                                                    'Set "config.dashboard_config_max_size" to None to disable this check. '
+                                                    'Max: {} Current: {}"'.format(cprovider, max_config_size, current_config_size))
+                ret.append(
+                    Object({
+                        'apiVersion': 'v1',
+                        'kind': 'ConfigMap',
+                        'metadata': {
+                            'name': '{}-{}'.format(self.object_name('config-dashboard'), cprovider),
+                            'namespace': self.namespace(),
+                        },
+                        'data': cproviderdata,
+                    }, name='config-dashboard-{}'.format(cprovider), source=self.SOURCE_NAME, instance=self.basename()),
+                )
 
         secret_data = {}
 
@@ -243,8 +253,8 @@ class GrafanaBuilder(Builder):
                         providers[dashboard.provider] = {
                             'name': 'dashboard-{}'.format(dashboard.provider),
                             'configMap': {
-                                'name': self.object_name('config-dashboard'),
-                                'items': []
+                                'name': '{}-{}'.format(self.object_name('config-dashboard'), dashboard.provider),
+                                'items': [],
                             }
                         }
                         extra_volumemounts.append({
@@ -252,12 +262,12 @@ class GrafanaBuilder(Builder):
                             'mountPath': self._dashboard_path(dashboard.provider),
                         })
 
-                    itemkey = 'dashboard-{}-{}.json'.format(dashboard.provider, dashboard.name)
+                    itemkey = 'dashboard-{}.json'.format(dashboard.name)
                     if next((k for k in providers[dashboard.provider]['configMap']['items'] if k['key'] == itemkey), None) is not None:
                         raise InvalidParamError('Duplicated name "{}" for provider "{}"'.format(dashboard.name, dashboard.provider))
 
                     providers[dashboard.provider]['configMap']['items'].append({
-                        'key': 'dashboard-{}-{}.json'.format(dashboard.provider, dashboard.name),
+                        'key': itemkey,
                         'path': '{}.json'.format(dashboard.name),
                     })
                 else:

@@ -57,8 +57,12 @@ class GrafanaOptions(Options):
           -
         * - config |rarr| dashboards_path
           - The root path where dashboards will be installed on the container.
+          - str
           - ```/var/lib/grafana/dashboards```
-          -
+        * - config |rarr| dashboard_config_max_size
+          - The maximum size of a dashboard config ConfigMap size (set None to disable check)
+          - int
+          - 250000
         * - config |rarr| admin |rarr| user
           - admin user name
           - str, :class:`KData_Value`, :class:`KData_ConfigMap`, :class:`KData_Secret`
@@ -101,6 +105,7 @@ class GrafanaOptions(Options):
                 },
                 'dashboards': OptionDef(allowed_types=[Sequence]),
                 'dashboards_path': OptionDef(required=True, default_value='/var/lib/grafana/dashboards', allowed_types=[str]),
+                'dashboard_config_max_size': OptionDef(default_value=250000, allowed_types=[int]),
                 'admin': {
                     'user': OptionDef(format=OptionDefFormat.KDATA_ENV, allowed_types=[str, *KDataHelper_Env.allowed_kdata()]),
                     'password': OptionDef(format=OptionDefFormat.KDATA_ENV, allowed_types=[str, KData_Secret]),
