@@ -26,7 +26,7 @@ from kubragen.output import OutputProject, OD_FileTemplate, OutputFile_ShellScri
     OutputDriver_Print
 from kubragen.provider import Provider
 
-from kg_grafana import GrafanaBuilder, GrafanaOptions
+from kg_grafana import GrafanaBuilder, GrafanaOptions, GrafanaDashboardSource_GNet, GrafanaDashboardSource_Url
 
 kg = KubraGen(provider=Provider(PROVIDER_GOOGLE, PROVIDERSVC_GOOGLE_GKE), options=Options({
     'namespaces': {
@@ -69,6 +69,44 @@ grafana_config = GrafanaBuilder(kubragen=kg, options=GrafanaOptions({
     'basename': 'mygrafana',
     'config': {
         'service_port': 80,
+        'admin': {
+            'user': 'myuser',
+            'password': 'mypassword',
+        },
+        'provisioning': {
+            'datasources': [
+                {
+                    'name': 'Prometheus',
+                    'type': 'prometheus',
+                    'access': 'proxy',
+                    'url': 'http://prometheus:9090',
+                },
+                {
+                    'name': 'Loki',
+                    'type': 'loki',
+                    'access': 'proxy',
+                    'url': 'http://loki:3100',
+                },
+            ],
+            'dashboards': [
+                {
+                    'name': 'default',
+                    'type': 'file',
+                },
+                {
+                    'name': 'second',
+                    'type': 'file',
+                },
+            ],
+        },
+        'dashboards': [
+            GrafanaDashboardSource_GNet(provider='default', name='prometheus', gnetId=2, revision=2,
+                                        datasource='Prometheus'),
+            GrafanaDashboardSource_Url(provider='default', name='kubernetes',
+                                       url='https://raw.githubusercontent.com/zaneclaes/grafana-dashboards/master/kubernetes.json'),
+            # GrafanaDashboardSource_KData(provider='second', kdata=KData_ConfigMapManual(
+            #     configmapName='grafana-default-config-map')),
+        ],
     },
     'kubernetes': {
         'volumes': {
@@ -93,7 +131,19 @@ grafana_config = GrafanaBuilder(kubragen=kg, options=GrafanaOptions({
     }
 }))
 
-grafana_config.ensure_build_names(grafana_config.BUILD_SERVICE)
+grafana_config.ensure_build_names(grafana_config.BUILD_CONFIG, grafana_config.BUILD_SERVICE)
+
+
+if grafana_config.BUILD_CONFIG in grafana_config.build_names_required():
+    #
+    # OUTPUTFILE: grafana-config.yaml
+    #
+    file = OutputFile_Kubernetes('grafana-config.yaml')
+    out.append(file)
+
+    file.append(grafana_config.build(grafana_config.BUILD_CONFIG))
+
+    shell_script.append(OD_FileTemplate(f'kubectl apply -f ${{FILE_{file.fileid}}}'))
 
 #
 # OUTPUTFILE: grafana.yaml
