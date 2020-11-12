@@ -5,7 +5,7 @@ from .option import (
     GrafanaOptions
 )
 
-__version__ = "0.8.0"
+__version__ = "0.8.1"
 
 __all__ = [
     'GrafanaBuilder',
