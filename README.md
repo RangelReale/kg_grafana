@@ -194,4 +194,4 @@ kubectl apply -f 002-grafana.yaml
 
 ## Author
 
-Rangel Reale (rangelspam@gmail.com)
+Rangel Reale (rangelreale@gmail.com)

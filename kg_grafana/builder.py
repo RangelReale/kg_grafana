@@ -63,12 +63,12 @@ class GrafanaBuilder(Builder):
 
     SOURCE_NAME = 'kg_grafana'
 
-    BUILD_CONFIG: TBuild = 'config'
-    BUILD_SERVICE: TBuild = 'service'
+    BUILD_CONFIG = TBuild('config')
+    BUILD_SERVICE = TBuild('service')
 
-    BUILDITEM_CONFIG_SECRET: TBuildItem = 'config-secret'
-    BUILDITEM_DEPLOYMENT: TBuildItem = 'deployment'
-    BUILDITEM_SERVICE: TBuildItem = 'service'
+    BUILDITEM_CONFIG_SECRET = TBuildItem('config-secret')
+    BUILDITEM_DEPLOYMENT = TBuildItem('deployment')
+    BUILDITEM_SERVICE = TBuildItem('service')
 
     def __init__(self, kubragen: KubraGen, options: Optional[GrafanaOptions] = None):
         super().__init__(kubragen)
@@ -79,7 +79,6 @@ class GrafanaBuilder(Builder):
         self._namespace = self.option_get('namespace')
 
         self.object_names_init({
-            'config-secret': None,
             'service': self.basename(),
             'deployment': self.basename(),
             'pod-label-app': self.basename(),
@@ -250,7 +249,7 @@ class GrafanaBuilder(Builder):
                             ValueData(value={
                                 'name': 'provisioning-datasources',
                                 'secret': {
-                                    'secretName': self.object_name('config-secret'),
+                                    'secretName': self.object_name('config-secret') if self.object_exists('config-secret') else 'UNDEFINED',
                                     'items': [{
                                         'key': 'datasources.yaml',
                                         'path': 'datasources.yaml',
@@ -260,7 +259,7 @@ class GrafanaBuilder(Builder):
                             ValueData(value={
                                 'name': 'provisioning-plugins',
                                 'secret': {
-                                    'secretName': self.object_name('config-secret'),
+                                    'secretName': self.object_name('config-secret') if self.object_exists('config-secret') else 'UNDEFINED',
                                     'items': [{
                                         'key': 'plugins.yaml',
                                         'path': 'plugins.yaml',
@@ -270,7 +269,7 @@ class GrafanaBuilder(Builder):
                             ValueData(value={
                                 'name': 'provisioning-dashboards',
                                 'secret': {
-                                    'secretName': self.object_name('config-secret'),
+                                    'secretName': self.object_name('config-secret') if self.object_exists('config-secret') else 'UNDEFINED',
                                     'items': [{
                                         'key': 'dashboards.yaml',
                                         'path': 'dashboards.yaml',
