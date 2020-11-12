@@ -1,6 +1,5 @@
 from kubragen import KubraGen
 from kubragen.consts import PROVIDER_GOOGLE, PROVIDERSVC_GOOGLE_GKE
-from kubragen.data import ValueData
 from kubragen.object import Object
 from kubragen.option import OptionRoot
 from kubragen.options import Options
@@ -8,7 +7,7 @@ from kubragen.output import OutputProject, OD_FileTemplate, OutputFile_ShellScri
     OutputDriver_Print
 from kubragen.provider import Provider
 
-from kg_grafana import GrafanaBuilder, GrafanaOptions
+from kg_grafana import GrafanaBuilder, GrafanaOptions, GrafanaDashboardSource_GNet, GrafanaDashboardSource_Url
 
 kg = KubraGen(provider=Provider(PROVIDER_GOOGLE, PROVIDERSVC_GOOGLE_GKE), options=Options({
     'namespaces': {
@@ -70,7 +69,25 @@ grafana_config = GrafanaBuilder(kubragen=kg, options=GrafanaOptions({
                     'url': 'http://loki:3100',
                 },
             ],
+            'dashboards': [
+                {
+                    'name': 'default',
+                    'type': 'file',
+                },
+                {
+                    'name': 'second',
+                    'type': 'file',
+                },
+            ],
         },
+        'dashboards': [
+            GrafanaDashboardSource_GNet(provider='default', name='prometheus', gnetId=2, revision=2,
+                                        datasource='Prometheus'),
+            GrafanaDashboardSource_Url(provider='default', name='kubernetes',
+                                       url='https://raw.githubusercontent.com/zaneclaes/grafana-dashboards/master/kubernetes.json'),
+            # GrafanaDashboardSource_KData(provider='second', kdata=KData_ConfigMapManual(
+            #     configmapName='grafana-default-config-map')),
+        ],
     },
     'kubernetes': {
         'volumes': {

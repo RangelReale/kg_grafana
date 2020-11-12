@@ -1,4 +1,8 @@
-from typing import Optional, Sequence, List
+import copy
+import posixpath
+import re
+from typing import Optional, Sequence, List, Dict, Any
+from urllib.request import urlopen
 
 from kubragen import KubraGen
 from kubragen.builder import Builder
@@ -7,13 +11,17 @@ from kubragen.configfile import ConfigFile, ConfigFileRenderMulti, ConfigFileRen
 from kubragen.data import ValueData
 from kubragen.exception import InvalidNameError, InvalidParamError
 from kubragen.helper import LiteralStr
-from kubragen.kdata import IsKData
+from kubragen.kdata import IsKData, KData_Secret, KData_ConfigMap, KData_ConfigMapManual, KData_SecretManual, \
+    KData_Value
 from kubragen.kdatahelper import KDataHelper_Volume, KDataHelper_Env
+from kubragen.merger import Merger
 from kubragen.object import ObjectItem, Object
 from kubragen.types import TBuild, TBuildItem
+from kubragen.util import is_allowed_types
 
 from .configfile import GrafanaConfigFile
-from .option import GrafanaOptions
+from .option import GrafanaOptions, GrafanaDashboardSource_KData, GrafanaDashboardSource, GrafanaDashboardSource_Str, \
+    GrafanaDashboardSource_Url, GrafanaDashboardSource_LocalFile, GrafanaDashboardSource_GNet
 
 
 class GrafanaBuilder(Builder):
@@ -37,6 +45,8 @@ class GrafanaBuilder(Builder):
           - description
         * - BUILDITEM_CONFIG
           - ConfigMap
+        * - BUILDITEM_CONFIG_DASHBOARD
+          - ConfigMap with dashboard sources
         * - BUILDITEM_CONFIG_SECRET
           - Secret
         * - BUILDITEM_DEPLOYMENT
@@ -53,6 +63,9 @@ class GrafanaBuilder(Builder):
         * - config
           - ConfigMap
           - ```<basename>-config```
+        * - config-dashboard
+          - ConfigMap
+          - ```<basename>-config-dashboard```
         * - config-secret
           - Secret
           - ```<basename>-config-secret```
@@ -76,6 +89,7 @@ class GrafanaBuilder(Builder):
     BUILD_SERVICE = TBuild('service')
 
     BUILDITEM_CONFIG = TBuildItem('config')
+    BUILDITEM_CONFIG_DASHBOARD = TBuildItem('config-dashboard')
     BUILDITEM_CONFIG_SECRET = TBuildItem('config-secret')
     BUILDITEM_DEPLOYMENT = TBuildItem('deployment')
     BUILDITEM_SERVICE = TBuildItem('service')
@@ -91,6 +105,7 @@ class GrafanaBuilder(Builder):
 
         self.object_names_init({
             'config': self.basename('-config'),
+            'config-dashboard': self.basename('-config-dashboard'),
             'config-secret': self.basename('-config-secret'),
             'service': self.basename(),
             'deployment': self.basename(),
@@ -116,11 +131,12 @@ class GrafanaBuilder(Builder):
         return [self.BUILD_CONFIG, self.BUILD_SERVICE]
 
     def build_names_required(self) -> Sequence[TBuild]:
-        ret = [self.BUILD_CONFIG, self.BUILD_SERVICE]
-        return ret
+        return [self.BUILD_CONFIG, self.BUILD_SERVICE]
 
     def builditem_names(self) -> Sequence[TBuildItem]:
         return [
+            self.BUILDITEM_CONFIG,
+            self.BUILDITEM_CONFIG_DASHBOARD,
             self.BUILDITEM_CONFIG_SECRET,
             self.BUILDITEM_DEPLOYMENT,
             self.BUILDITEM_SERVICE,
@@ -151,6 +167,25 @@ class GrafanaBuilder(Builder):
             }, name=self.BUILDITEM_CONFIG, source=self.SOURCE_NAME, instance=self.basename()),
         )
 
+        if self.option_get('config.dashboards') is not None:
+            configd_data = {}
+
+            for dashboard in self.option_get('config.dashboards'):
+                if not isinstance(dashboard, GrafanaDashboardSource_KData):
+                    configd_data['dashboard-{}-{}.json'.format(dashboard.provider, dashboard.name)] = LiteralStr(self._dashboard_fetch(dashboard))
+
+            ret.append(
+                Object({
+                    'apiVersion': 'v1',
+                    'kind': 'ConfigMap',
+                    'metadata': {
+                        'name': self.object_name('config-dashboard'),
+                        'namespace': self.namespace(),
+                    },
+                    'data': configd_data,
+                }, name=self.BUILDITEM_CONFIG_DASHBOARD, source=self.SOURCE_NAME, instance=self.basename()),
+            )
+
         secret_data = {}
 
         if not IsKData(self.option_get('config.admin.user')):
@@ -174,6 +209,7 @@ class GrafanaBuilder(Builder):
         if self.is_config_provisioning_item('dashboards'):
             secret_data['dashboards.yaml'] = self.kubragen.secret_data_encode(
                 self.configfile_provisioning_get('providers', 'config.provisioning.dashboards'))
+            secret_data['dashboards2.yaml'] = LiteralStr(self.configfile_provisioning_get('providers', 'config.provisioning.dashboards'))
 
         ret.append(Object({
             'apiVersion': 'v1',
@@ -190,6 +226,60 @@ class GrafanaBuilder(Builder):
 
     def internal_build_service(self) -> Sequence[ObjectItem]:
         ret: List[ObjectItem] = []
+
+        extra_volumes = []
+        extra_volumemounts = []
+
+        if self.option_get('config.dashboards') is not None:
+            # Configure dashboards mounts
+            providers: Dict[Any, Any] ={}
+            kdata_providers: List[str] = []
+
+            for dashboard in self.option_get('config.dashboards'):
+                if not isinstance(dashboard, GrafanaDashboardSource_KData):
+                    if dashboard.provider in kdata_providers:
+                        raise InvalidParamError('Provider was already used with a KData source')
+
+                    if dashboard.provider not in providers:
+                        providers[dashboard.provider] = {
+                            'name': 'dashboard-{}'.format(dashboard.provider),
+                            'configMap': {
+                                'name': self.object_name('config-dashboard'),
+                                'items': []
+                            }
+                        }
+                        extra_volumemounts.append({
+                            'name': 'dashboard-{}'.format(dashboard.provider),
+                            'mountPath': self._dashboard_path(dashboard.provider),
+                        })
+
+                    itemkey = 'dashboard-{}-{}.json'.format(dashboard.provider, dashboard.name)
+                    if next((k for k in providers[dashboard.provider]['configMap']['items'] if k['key'] == itemkey), None) is not None:
+                        raise InvalidParamError('Duplicated name "{}" for provider "{}"'.format(dashboard.name, dashboard.provider))
+
+                    providers[dashboard.provider]['configMap']['items'].append({
+                        'key': 'dashboard-{}-{}.json'.format(dashboard.provider, dashboard.name),
+                        'path': '{}.json'.format(dashboard.name),
+                    })
+                else:
+                    if not is_allowed_types(dashboard.kdata, [
+                        KData_Value, KData_ConfigMap, KData_ConfigMapManual, KData_Secret, KData_SecretManual
+                    ]):
+                        raise InvalidParamError('Only ConfigMap and Secret KData is allowed')
+                    if dashboard.provider in providers:
+                        raise InvalidParamError('KData source must be on a separate provider')
+                    vname = 'dashboard-{}'.format(dashboard.provider)
+                    providers[dashboard.provider] = KDataHelper_Volume.info(base_value={
+                        'name': vname,
+                    }, value=dashboard.kdata)
+                    extra_volumemounts.append({
+                        'name': 'dashboard-{}'.format(dashboard.provider),
+                        'mountPath': self._dashboard_path(dashboard.provider),
+                    })
+                    kdata_providers.append(dashboard.provider)
+
+            for prv in providers.values():
+                extra_volumes.append(prv)
 
         ret.extend([
             Object({
@@ -274,6 +364,7 @@ class GrafanaBuilder(Builder):
                                         'mountPath': '/etc/grafana/provisioning/dashboards',
                                         'readOnly': True,
                                     }, enabled=self.is_config_provisioning_item('dashboards')),
+                                    *extra_volumemounts
                                 ],
                                 'livenessProbe': ValueData(value={
                                     'httpGet': {
@@ -335,6 +426,7 @@ class GrafanaBuilder(Builder):
                                         }]
                                     }
                                 }, enabled=self.is_config_provisioning_item('dashboards')),
+                                *extra_volumes
                             ]
                         }
                     }
@@ -390,8 +482,50 @@ class GrafanaBuilder(Builder):
         elif isinstance(ofile, str):
             return ofile
         else:
+            if filetype == 'providers':
+                newofile = []
+                for og in ofile:
+                    if 'type' not in og or og['type'] == 'file':
+                        # Auto add "options.path" if not set
+                        newog = copy.deepcopy(og)
+                        if 'options' not in newog or 'path' not in newog['options']:
+                            Merger.merge(newog, {
+                                'options': {
+                                    'path': self._dashboard_path(newog['name']),
+                                },
+                            })
+                        newofile.append(newog)
+                    else:
+                        newofile.append(og)
+                ofile = newofile
             ogfile = {
                 'apiVersion': 1,
                 filetype: ofile,
             }
             return configfilerender.render(ConfigFileOutput_Dict(ogfile))
+
+    def _dashboard_path(self, name: str):
+        return posixpath.join(self.option_get('config.dashboards_path'), name)
+
+    def _dashboard_fetch(self, source: GrafanaDashboardSource):
+        if isinstance(source, GrafanaDashboardSource_Str):
+            return source.source
+        if isinstance(source, GrafanaDashboardSource_Url):
+            try:
+                with urlopen(source.url) as u:
+                    return u.read().decode('utf-8')
+            except Exception as e:
+                raise InvalidParamError('Error downloading url: {}'.format(str(e))) from e
+        if isinstance(source, GrafanaDashboardSource_LocalFile):
+            with open(source.filename, mode='r', encoding='utf-8') as f:
+                return f.read()
+        if isinstance(source, GrafanaDashboardSource_GNet):
+            try:
+                with urlopen(f'https://grafana.com/api/dashboards/{source.gnetId}/revisions/{source.revision}/download') as u:
+                    src = u.read().decode('utf-8')
+                    if source.datasource is not None:
+                        return re.sub(r'"datasource":.*,', '"datasource": "{}",'.format(source.datasource), src)
+                    return src
+            except Exception as e:
+                raise InvalidParamError('Error downloading url: {}'.format(str(e))) from e
+        raise InvalidParamError('Unsupported dashboard source: "{}"'.format(repr(source)))

@@ -1,8 +1,8 @@
-from typing import Sequence, Mapping, Any
+from typing import Sequence, Mapping, Any, Optional
 
 from kubragen.configfile import ConfigFile
 from kubragen.data import Data
-from kubragen.kdata import KData_Secret
+from kubragen.kdata import KData_Secret, KData
 from kubragen.kdatahelper import KDataHelper_Volume, KDataHelper_Env
 from kubragen.option import OptionDef, OptionDefFormat
 from kubragen.options import Options
@@ -48,8 +48,16 @@ class GrafanaOptions(Options):
           - str, Sequence, ConfigFile
           -
         * - config |rarr| provisioning |rarr| dashboards
-          - Grafana dashboards provisioning
+          - Grafana dashboards provisioning. ```options.path``` will be set automatically if it is not set
           - str, Sequence, ConfigFile
+          -
+        * - config |rarr| dashboards
+          - Grafana dashboards to pre install
+          - :class:`Sequence[GrafanaDashboardSource]`
+          -
+        * - config |rarr| dashboards_path
+          - The root path where dashboards will be installed on the container.
+          - ```/var/lib/grafana/dashboards```
           -
         * - config |rarr| admin |rarr| user
           - admin user name
@@ -91,6 +99,8 @@ class GrafanaOptions(Options):
                     'plugins': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
                     'dashboards': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
                 },
+                'dashboards': OptionDef(allowed_types=[Sequence]),
+                'dashboards_path': OptionDef(required=True, default_value='/var/lib/grafana/dashboards', allowed_types=[str]),
                 'admin': {
                     'user': OptionDef(format=OptionDefFormat.KDATA_ENV, allowed_types=[str, *KDataHelper_Env.allowed_kdata()]),
                     'password': OptionDef(format=OptionDefFormat.KDATA_ENV, allowed_types=[str, KData_Secret]),
@@ -110,6 +120,96 @@ class GrafanaOptions(Options):
                 }
             },
         }
+
+
+class GrafanaDashboardSource:
+    """
+    Grafana dashboard source base class.
+
+    :param provider: provider name (must be in config.provisioning.dashboards)
+    :param name: item name (will become a filename)
+    """
+    provider: str
+    name: str
+
+    def __init__(self, provider: str, name: str):
+        self.provider = provider
+        self.name = name
+
+
+class GrafanaDashboardSource_Str(GrafanaDashboardSource):
+    """
+    Grafana dashboard source from a raw string.
+
+    :param source: string containing the dashboard source code
+    """
+    source: str
+
+    def __init__(self, provider: str, name: str, source: str):
+        super().__init__(provider, name)
+        self.source = source
+
+
+class GrafanaDashboardSource_KData(GrafanaDashboardSource):
+    """
+    Grafana dashboard source from a :class:`kubragen.kdata.KData`.
+
+    Use this to load dashboards from other sources, like ConfigMap, Secret, or event PersistentVolumeClaims.
+
+    **WARNING**: this item should be on an exclusive provider, it cannot be mixed with other sources.
+
+    :param kdata: kdata
+    """
+    kdata: KData
+
+    def __init__(self, provider: str, kdata: KData):
+        super().__init__(provider, '')
+        self.kdata = kdata
+
+
+class GrafanaDashboardSource_Url(GrafanaDashboardSource):
+    """
+    Grafana dashboard source from an url.
+
+    :param url: url to download
+    """
+    url: str
+
+    def __init__(self, provider: str, name: str, url: str):
+        super().__init__(provider, name)
+        self.url = url
+
+
+class GrafanaDashboardSource_LocalFile(GrafanaDashboardSource):
+    """
+    Grafana dashboard source from a local file.
+
+    :param filename: filename to read
+    """
+    filename: str
+
+    def __init__(self, provider: str, name: str, filename: str):
+        super().__init__(provider, name)
+        self.filename = filename
+
+
+class GrafanaDashboardSource_GNet(GrafanaDashboardSource):
+    """
+    Grafana dashboard source from GNet (Grafana dashboards site).
+
+    :param gnetId: dashboard id
+    :param revision: dashboard revision
+    :param datasource: the datasource to use. If None, will keep the default.
+    """
+    gnetId: int
+    revision: int
+    datasource: Optional[str]
+
+    def __init__(self, provider: str, name: str, gnetId: int, revision: int, datasource: Optional[str] = None):
+        super().__init__(provider, name)
+        self.gnetId = gnetId
+        self.revision = revision
+        self.datasource = datasource
 
 
 class GrafanaOptions_Default_Resources_Deployment(Data):
