@@ -209,7 +209,6 @@ class GrafanaBuilder(Builder):
         if self.is_config_provisioning_item('dashboards'):
             secret_data['dashboards.yaml'] = self.kubragen.secret_data_encode(
                 self.configfile_provisioning_get('providers', 'config.provisioning.dashboards'))
-            secret_data['dashboards2.yaml'] = LiteralStr(self.configfile_provisioning_get('providers', 'config.provisioning.dashboards'))
 
         ret.append(Object({
             'apiVersion': 'v1',
