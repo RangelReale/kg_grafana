@@ -51,6 +51,10 @@ grafana_config = GrafanaBuilder(kubragen=kg, options=GrafanaOptions({
     'basename': 'mygrafana',
     'config': {
         'service_port': 80,
+        'admin': {
+            'user': 'myuser',
+            'password': 'mypassword',
+        },
         'provisioning': {
             'datasources': [
                 {

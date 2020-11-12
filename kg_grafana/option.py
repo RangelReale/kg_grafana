@@ -2,7 +2,8 @@ from typing import Sequence, Mapping, Any
 
 from kubragen.configfile import ConfigFile
 from kubragen.data import Data
-from kubragen.kdatahelper import KDataHelper_Volume
+from kubragen.kdata import KData_Secret
+from kubragen.kdatahelper import KDataHelper_Volume, KDataHelper_Env
 from kubragen.option import OptionDef, OptionDefFormat
 from kubragen.options import Options
 
@@ -26,6 +27,10 @@ class GrafanaOptions(Options):
           - namespace
           - str
           - ```default```
+        * - config |rarr| grafana_config
+          - Grafana INI config file
+          - str, :class:`kubragen.configfile.ConfigFile`
+          - :class:`kg_grafana.GrafanaConfigFile`
         * - config |rarr| install_plugins
           - install plugins
           - Sequence
@@ -45,6 +50,14 @@ class GrafanaOptions(Options):
         * - config |rarr| provisioning |rarr| dashboards
           - Grafana dashboards provisioning
           - str, Sequence, ConfigFile
+          -
+        * - config |rarr| admin |rarr| user
+          - admin user name
+          - str, :class:`KData_Value`, :class:`KData_ConfigMap`, :class:`KData_Secret`
+          -
+        * - config |rarr| admin |rarr| password
+          - admin password
+          - str, :class:`KData_Secret`
           -
         * - container |rarr| grafana
           - grafana container image
@@ -69,12 +82,18 @@ class GrafanaOptions(Options):
             'basename': OptionDef(required=True, default_value='grafana', allowed_types=[str]),
             'namespace': OptionDef(required=True, default_value='default', allowed_types=[str]),
             'config': {
+                'grafana_config': OptionDef(allowed_types=[str, ConfigFile]),
                 'install_plugins': OptionDef(default_value=[], allowed_types=[Sequence]),
                 'service_port': OptionDef(required=True, default_value=3000, allowed_types=[int]),
+                'probes': OptionDef(required=True, default_value=False, allowed_types=[bool]),
                 'provisioning': {
                     'datasources': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
                     'plugins': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
                     'dashboards': OptionDef(allowed_types=[str, Sequence, ConfigFile]),
+                },
+                'admin': {
+                    'user': OptionDef(format=OptionDefFormat.KDATA_ENV, allowed_types=[str, *KDataHelper_Env.allowed_kdata()]),
+                    'password': OptionDef(format=OptionDefFormat.KDATA_ENV, allowed_types=[str, KData_Secret]),
                 },
             },
             'container': {
